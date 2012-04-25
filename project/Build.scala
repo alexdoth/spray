@@ -47,7 +47,7 @@ object Build extends Build {
     .dependsOn(sprayBase, sprayCan)
     .settings(moduleSettings: _*)
     .settings(libraryDependencies ++=
-      provided(akkaActor) ++
+      provided(akkaActor, setak) ++
       test(akkaSlf4j, logback, slf4j, specs2)
     )
 

@@ -4,7 +4,7 @@ package examples.calculator
 import directives.DoubleNumber
 
 trait CalculatorService extends Directives with CustomMarshallers {
-  
+
   val calculatorService = {
     path("add" / DoubleNumber / DoubleNumber) { (a, b) =>
       get {

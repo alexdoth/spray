@@ -5,7 +5,8 @@ object Dependencies {
   val resolutionRepos = Seq(
     "typesafe repo"   at "http://repo.typesafe.com/typesafe/releases/",
     "glassfish repo"  at "http://download.java.net/maven/glassfish/",
-    "spray repo"      at "http://repo.spray.cc/"
+    "spray repo"      at "http://repo.spray.cc/",
+    "setak"           at "http://mir.cs.illinois.edu/setak/snapshots/"
   )
 
   def compile   (deps: ModuleID*): Seq[ModuleID] = deps map (_ % "compile")
@@ -32,5 +33,5 @@ object Dependencies {
   val sprayJson     = "cc.spray"                                %%  "spray-json"                  % "1.1.0"
   val tomcat6Async  = "org.atmosphere"                          %   "atmosphere-compat-tomcat"    % "0.7.1"
   val twirlApi      = "cc.spray"                                %%  "twirl-api"                   % "0.5.1"
-
+  val setak         = "edu.illinois"                            %%  "setak"                       % "1.0-SNAPSHOT"
 }
