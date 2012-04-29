@@ -19,18 +19,18 @@ package client
 
 import utils._
 import http._
-import akka.actor.Actor
 import akka.actor.Actor._
 import can.{HttpConnection, Connect}
 import akka.dispatch.{DefaultCompletableFuture, Future}
 import HttpProtocols._
 import SprayCanConversions._
+import akka.actor.{PoisonPill, ActorRef, Actor}
 
 class HttpConduit(host: String, port: Int = 80, config: ConduitConfig = ConduitConfig.fromAkkaConf)
   extends MessagePipelining with Logging {
 
   protected lazy val httpClient = ActorHelpers.actor(config.clientActorId)
-  protected val mainActor = actorOf(new MainActor).start()
+  var mainActor: ActorRef = actorOf(new MainActor).start()
 
   val sendReceive: SendReceive = sendReceive()
 
@@ -44,14 +44,57 @@ class HttpConduit(host: String, port: Int = 80, config: ConduitConfig = ConduitC
     mainActor.stop()
   }
 
-  protected case class Send(request: HttpRequest, responder: Either[Throwable, HttpResponse] => Unit, retriesLeft: Int)
+  case class Send(request: HttpRequest, responder: Either[Throwable, HttpResponse] => Unit, retriesLeft: Int)
     extends HttpRequestContext {
     def withRetriesDecremented = copy(retriesLeft = retriesLeft - 1)
   }
 
-  protected class MainActor extends Actor {
-    case class ConnectionResult(conn: Conn, send: Send, result: Either[Throwable, HttpConnection])
-    case class Respond(conn: Conn, send: Send, result: Either[Throwable, HttpResponse])
+  case class ConnectionResult(conn: Conn, send: Send, result: Either[Throwable, HttpConnection])
+  case class Respond(conn: Conn, send: Send, result: Either[Throwable, HttpResponse])
+
+  class Conn extends HttpConn {
+    implicit val timeout = Actor.Timeout(Long.MaxValue) // in scope for '? Connect(...)' call below
+    var pendingResponses: Int = -1
+    var httpConnection: Option[Either[Future[HttpConnection], HttpConnection]] = None
+
+    def dispatch(requestCtx: HttpRequestContext) {
+      val send = requestCtx.asInstanceOf[Send]
+      if (httpConnection.isEmpty) {
+        log.debug("Opening new connection to %s:%s", host, port)
+        pendingResponses = 1
+        val connectionFuture = (httpClient ? Connect(host, port)).mapTo[HttpConnection].onComplete { future =>
+          mainActor ! ConnectionResult(this, send, future.value.get)
+        }
+        httpConnection = Some(Left(connectionFuture))
+      } else {
+        pendingResponses += 1
+        def dispatchTo(connection: HttpConnection) {
+          log.debug("Dispatching %s", requestString(send.request))
+          connection.send(toSprayCanRequest(send.request)).onComplete {
+            _.value.get match {
+              case Right(response) => mainActor ! Respond(this, send, Right(fromSprayCanResponse(response)))
+
+              case Left(error) =>
+                mainActor ! Clear(this, connection)
+                mainActor ! Respond(this, send, Left(error))
+            }
+          }
+        }
+        httpConnection.get match {
+          case Right(connection) => dispatchTo(connection)
+          case Left(future) => future.onResult { case connection => dispatchTo(connection) }
+        }
+      }
+    }
+  }
+
+  def requestString(request: HttpRequest) = {
+    "%s request to http://%s:%s%s".format(request.method, host, port, request.uri)
+  }
+
+  private case class Clear(conn: Conn, httpConnection: HttpConnection)
+
+  class MainActor extends Actor {
 
     val conns = Seq.fill(config.maxConnections)(new Conn)
 
@@ -98,46 +141,5 @@ class HttpConduit(host: String, port: Int = 80, config: ConduitConfig = ConduitC
         case `HTTP/1.1` => headers.exists({ case Connection(Seq("close")) => true ; case _ => false })
       }
     }
-
-    def requestString(request: HttpRequest) = {
-      "%s request to http://%s:%s%s".format(request.method, host, port, request.uri)
-    }
-
-    class Conn extends HttpConn {
-      implicit val timeout = Actor.Timeout(Long.MaxValue) // in scope for '? Connect(...)' call below
-      var pendingResponses: Int = -1
-      var httpConnection: Option[Either[Future[HttpConnection], HttpConnection]] = None
-
-      def dispatch(requestCtx: HttpRequestContext) {
-        val send = requestCtx.asInstanceOf[Send]
-        if (httpConnection.isEmpty) {
-          log.debug("Opening new connection to %s:%s", host, port)
-          pendingResponses = 1
-          val connectionFuture = (httpClient ? Connect(host, port)).mapTo[HttpConnection].onComplete { future =>
-            self ! ConnectionResult(this, send, future.value.get)
-          }
-          httpConnection = Some(Left(connectionFuture))
-        } else {
-          pendingResponses += 1
-          def dispatchTo(connection: HttpConnection) {
-            log.debug("Dispatching %s", requestString(send.request))
-            connection.send(toSprayCanRequest(send.request)).onComplete {
-              _.value.get match {
-                case Right(response) => self ! Respond(this, send, Right(fromSprayCanResponse(response)))
-                case Left(error) =>
-                  self ! Clear(this, connection)
-                  self ! Respond(this, send, Left(error))
-              }
-            }
-          }
-          httpConnection.get match {
-            case Right(connection) => dispatchTo(connection)
-            case Left(future) => future.onResult { case connection => dispatchTo(connection) }
-          }
-        }
-      }
-    }
-
-    private case class Clear(conn: Conn, httpConnection: HttpConnection)
   }
 }

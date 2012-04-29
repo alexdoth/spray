@@ -5,6 +5,7 @@ object Dependencies {
   val resolutionRepos = Seq(
     "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
     "Glassfish Repository" at "http://download.java.net/maven/glassfish/",
+    "setak"           at "http://mir.cs.illinois.edu/setak/snapshots/",
     "spray repo" at "http://repo.spray.cc/",
     ScalaToolsSnapshots
   )
@@ -17,10 +18,12 @@ object Dependencies {
     val slf4j     = "1.6.4"
     val logback   = "1.0.0"
     val liftJson  = "2.4"
+    val setak     = "1.0-SNAPSHOT"
   }
 
   object Compile {
     val akkaActor     = "se.scalablesolutions.akka" %   "akka-actor"                % V.akka      % "compile"
+    val setak         = "edu.illinois"              %%  "setak"                     % V.setak     % "compile"
     val parboiled     = "org.parboiled"             %   "parboiled-scala"           % "1.0.2"     % "compile"
     val mimepull      = "org.jvnet"                 %   "mimepull"                  % "1.6"       % "compile"
     val sprayCan      = "cc.spray"                  %   "spray-can"                 % V.sprayCan  % "compile"
@@ -31,6 +34,7 @@ object Dependencies {
 
   object Provided {
     val akkaActor     = "se.scalablesolutions.akka" %   "akka-actor"                % V.akka            % "provided"
+    val setak         = "edu.illinois"              %%  "setak"                     % V.setak           % "provided"
     val sprayJson     = "cc.spray"                  %%  "spray-json"                % V.sprayJson       % "provided"
     val sprayCan      = "cc.spray"                  %   "spray-can"                 % V.sprayCan        % "provided"
     val servlet30     = "org.glassfish"             %   "javax.servlet"             % "3.0"             % "provided"
@@ -43,10 +47,11 @@ object Dependencies {
   }
 
   object Test {
-    val specs2        = "org.specs2"                %%  "specs2"                    % "1.7.1"   % "test"
-    val slf4j         = "org.slf4j"                 %   "slf4j-api"                 % V.slf4j   % "test"
-    val akkaSlf4j     = "se.scalablesolutions.akka" %   "akka-slf4j"                % V.akka    % "test"
-    val logback       = "ch.qos.logback"            %   "logback-classic"           % V.logback % "test"
+    val setak         = "edu.illinois"              %%  "setak"                     % V.setak        % "test"
+    val specs2        = "org.specs2"                %%  "specs2"                    % "1.7.1"        % "test"
+    val slf4j         = "org.slf4j"                 %   "slf4j-api"                 % V.slf4j        % "test"
+    val akkaSlf4j     = "se.scalablesolutions.akka" %   "akka-slf4j"                % V.akka         % "test"
+    val logback       = "ch.qos.logback"            %   "logback-classic"           % V.logback      % "test"
   }
 
   object Runtime {

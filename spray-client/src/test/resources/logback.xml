@@ -16,7 +16,7 @@
         </encoder>
     </appender> -->
 
-    <logger name="akka" level="OFF" />
+    <logger name="akka" level="ERROR" />
     <logger name="cc.spray" level="WARN" />
 
     <root level="INFO">

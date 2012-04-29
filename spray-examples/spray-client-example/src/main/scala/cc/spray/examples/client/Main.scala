@@ -6,9 +6,10 @@ import HttpMethods._
 import can.HttpClient
 import akka.config.Supervision._
 import akka.actor.{PoisonPill, Actor, Supervisor}
-import client.{Get, HttpConduit}
 import typeconversion.{SprayJsonSupport, DefaultMarshallers}
 import utils.Logging
+import client.{DispatchStrategies, ConduitConfig, Get, HttpConduit}
+import DispatchStrategies._
 
 object Main extends App with Logging {
 
@@ -30,18 +31,18 @@ object Main extends App with Logging {
 
   def fetchAndShowGithubDotCom() {
     // the HttpConduit gives us access to an HTTP server, it manages a pool of connections
+    
     val conduit = new HttpConduit("github.com")
-
     // send a simple request
     val responseFuture = conduit.sendReceive(HttpRequest(method = GET, uri = "/"))
-    val response = responseFuture.get
+    /*val response = responseFuture.get
     log.info(
       """|Response for GET request to github.com:
          |status : %s
          |headers: %s
          |body   : %s""".stripMargin,
       response.status.value, response.headers, response.content
-    )
+    )*/
     conduit.close()
   }
 

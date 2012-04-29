@@ -65,7 +65,9 @@ object SprayBuild extends Build {
         Test.specs2,
         Test.slf4j,
         Test.akkaSlf4j,
-        Test.logback
+        Test.logback,
+        Provided.setak,
+        Test.setak
       )
     )
     .dependsOn(base)

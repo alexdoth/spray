@@ -21,13 +21,17 @@ import org.specs2.Specification
 import org.specs2.specification.Step
 import can.{HttpRequest => _, HttpResponse => _, _}
 import http._
+import cc.spray.http.HttpMethods._
 import utils._
 import DispatchStrategies._
 import akka.util.Duration
-import akka.actor.Actor
 import akka.dispatch.Future
+import akka.setak._
+import akka.setak.Commons._
+import akka.setak.core.TestMessageEnvelopSequence._
+import akka.actor.{ActorRef, PoisonPill, Actor}
 
-class HttpConduitSpec extends Specification { def is =
+class HttpConduitSpec extends SetakTest with Specification { def is =
                                                                               sequential^
                                                                               Step(start())^
   "An HttpConduit with max. 4 connections and NonPipelined strategy should"   ^
@@ -41,14 +45,24 @@ class HttpConduitSpec extends Specification { def is =
   "An HttpConduit should"                                                     ^
     "retry requests whose sending has failed"                                 ! retryFailedSend^
     "honor the pipelined strategy when retrying"                              ! retryPipelined^
+    "close any active connections on close"                                   ! handleClose^
                                                                               Step(Actor.registry.shutdownAll())
+
+
+  val DELAY_TOKEN = "/delay"
+  var httpClient: ActorRef = _
 
 
   class TestService extends Actor {
     self.id = "clienttest-server"
     protected def receive = {
-      case RequestContext(can.HttpRequest(method, uri, _, body, _), _, responder) => responder.complete {
-        response.withBody(method + "|" + uri + (if (body.length == 0) "" else "|" + new String(body, "ASCII")))
+      case RequestContext(can.HttpRequest(method, uri, _, body, _), _, responder) => {
+        if (uri == DELAY_TOKEN) {
+          Thread.sleep(200L) // 0.2 second
+        }
+        responder.complete {
+          response.withBody(method + "|" + uri + (if (body.length == 0) "" else "|" + new String(body, "ASCII")))
+        }
       }
       case Timeout(_, _, _, _, _, complete) => complete(response.withBody("TIMEOUT"))
     }
@@ -69,6 +83,17 @@ class HttpConduitSpec extends Specification { def is =
     }.reduceLeft(_ and _)
   }
 
+  def handleClose = {
+    val conduit = newConduit(NonPipelined())
+    val connMsg = testMessagePatternEnvelop(anyActorRef, conduit.mainActor, { case conn: conduit.ConnectionResult => })
+    val f = conduit.sendReceive(HttpRequest(uri = DELAY_TOKEN))
+    afterMessage(connMsg) {
+      conduit.close()
+      // Can't check for the exception in the Actor, but will see error output in console
+    }
+    1 === 1
+  }
+
   def retryFailedSend = {
     val conduit = newConduit(NonPipelined())
     def send = conduit.sendReceive(HttpRequest())
@@ -86,9 +111,15 @@ class HttpConduitSpec extends Specification { def is =
     future.get.map { case (a, b) => a.content === b.content }.reduceLeft(_ and _)
   }
 
-  def newConduit(strategy: DispatchStrategy, maxConnections: Int = 4) = new HttpConduit(
-    "127.0.0.1", 17242, ConduitConfig("clienttest-client", maxConnections, dispatchStrategy = strategy)
-  )
+  def newConduit(strategy: DispatchStrategy, maxConnections: Int = 4) = {
+    val ret = new HttpConduit(
+      "127.0.0.1", 17242, ConduitConfig("clienttest-client", maxConnections, dispatchStrategy = strategy)
+    )
+    // replace the akka.ActorRef with a TestActorRef
+    ret.mainActor.stop()
+    ret.mainActor = actorOf(new ret.MainActor).start()
+    ret
+  }
 
   def start() {
     Actor.actorOf(new TestService).start()
@@ -97,9 +128,9 @@ class HttpConduitSpec extends Specification { def is =
       serviceActorId = "clienttest-server",
       timeoutActorId = "clienttest-server",
       idleTimeout = 500,
-      reapingCycle = 100
+      reapingCycle = 500
     ))).start()
-    Actor.actorOf(new HttpClient(ClientConfig(clientActorId = "clienttest-client"))).start()
+    httpClient = actorOf(new HttpClient(ClientConfig(clientActorId = "clienttest-client"))).start()
   }
 
 }
